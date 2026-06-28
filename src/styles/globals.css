@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --brand-blue: #1C6FE0;
+    --brand-cyan: #22B8E6;
+    --brand-navy: #0D1F3C;
+    --brand-light: #EBF4FF;
+    --green: #22C55E;
+    --orange: #F97316;
+    --red: #EF4444;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 2px; }
+}
+
+@layer components {
+  /* Brand gradient */
+  .grad {
+    background: linear-gradient(135deg, #1C6FE0, #22B8E6);
+  }
+  .grad-text {
+    background: linear-gradient(135deg, #1C6FE0, #22B8E6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Cards */
+  .card {
+    @apply bg-white rounded-2xl border border-slate-100 shadow-sm;
+  }
+
+  /* Input */
+  .input {
+    @apply w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm
+           text-slate-900 placeholder-slate-400 outline-none
+           focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20
+           transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Buttons */
+  .btn-primary {
+    @apply w-full py-3 px-6 rounded-xl font-semibold text-sm text-white
+           grad transition-all duration-150 active:scale-95
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100
+           shadow-md shadow-blue-500/25;
+  }
+  .btn-secondary {
+    @apply w-full py-3 px-6 rounded-xl font-semibold text-sm
+           bg-slate-100 text-slate-700 border border-slate-200
+           hover:bg-slate-200 transition-all duration-150 active:scale-95;
+  }
+  .btn-ghost {
+    @apply w-full py-3 px-6 rounded-xl font-semibold text-sm
+           text-blue-600 border border-dashed border-blue-200 bg-blue-50/50
+           hover:bg-blue-50 transition-all duration-150 active:scale-95;
+  }
+  .btn-danger {
+    @apply w-full py-3 px-6 rounded-xl font-semibold text-sm
+           bg-red-50 text-red-600 border border-red-200
+           hover:bg-red-100 transition-all duration-150 active:scale-95;
+  }
+
+  /* Badge / Tag */
+  .tag {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold;
+  }
+  .tag-blue  { @apply bg-blue-50 text-blue-700; }
+  .tag-green { @apply bg-green-50 text-green-700; }
+  .tag-orange { @apply bg-orange-50 text-orange-700; }
+  .tag-red   { @apply bg-red-50 text-red-600; }
+
+  /* Bottom nav safe area */
+  .pb-nav { padding-bottom: 72px; }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
