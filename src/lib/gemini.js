@@ -1,12 +1,12 @@
 /**
- * CalorAI — Gemini Vision API client
- * Handles image-based meal analysis and text-based calorie estimation
+ * CalorAI — Groq Vision API client
+ * Replaces Gemini — uses Groq free tier (llama-4-scout vision model)
+ * Free tier: generous daily limits, no credit card needed
+ * Sign up: https://console.groq.com
  */
 
-const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
-
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
+const API_KEY = import.meta.env.VITE_GROQ_API_KEY
 const TIMEOUT_MS = 15_000
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
@@ -51,13 +51,15 @@ async function fetchWithTimeout(url, options, timeoutMs = TIMEOUT_MS) {
   }
 }
 
-/** Parse and validate Gemini response JSON */
-function parseGeminiJson(text) {
+/** Parse and validate Groq response JSON */
+function parseGroqJson(text) {
   // Strip markdown code fences if present
-  const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+  const clean = text
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim()
   try {
     const data = JSON.parse(clean)
-    // Validate expected shape
     if (typeof data !== 'object' || !Array.isArray(data.items)) {
       throw new Error('Unexpected shape')
     }
@@ -70,22 +72,22 @@ function parseGeminiJson(text) {
   }
 }
 
-/** Handle HTTP error codes from Gemini */
+/** Handle HTTP error codes from Groq */
 async function handleHttpError(response) {
   let body = {}
   try { body = await response.json() } catch { /* ignore */ }
-  const code = body?.error?.status || response.status
 
   const map = {
-    400: 'Photo format not supported by AI.',
-    403: 'AI API key is invalid — check VITE_GEMINI_API_KEY.',
+    400: 'Invalid request — please try again.',
+    401: 'Groq API key is invalid — check VITE_GROQ_API_KEY in Vercel.',
+    413: 'Photo is too large for AI — try a smaller image.',
     429: 'AI is busy right now — try again in a moment.',
-    500: 'AI service error — use manual entry.',
-    503: 'AI service unavailable — use manual entry.',
+    500: 'Groq service error — use manual entry.',
+    503: 'Groq service unavailable — use manual entry.',
   }
   throw new GeminiError(
     map[response.status] || `AI error (${response.status}) — use manual entry.`,
-    String(code)
+    String(response.status)
   )
 }
 
@@ -102,12 +104,17 @@ export class GeminiError extends Error {
 // ── Image Scan ───────────────────────────────────────────────────────────────
 
 /**
- * Analyse a meal photo with Gemini Vision.
+ * Analyse a meal photo with Groq Vision (llama-4-scout).
  * @param {File} file - Image file from input or camera
  * @returns {{ items: Array, total_kcal: number, confidence: number }}
  */
 export async function analyseMealPhoto(file) {
-  if (!API_KEY) throw new GeminiError('Gemini API key is not configured.', 'NO_KEY')
+  if (!API_KEY) {
+    throw new GeminiError(
+      'Groq API key is not configured. Add VITE_GROQ_API_KEY to Vercel env vars.',
+      'NO_KEY'
+    )
+  }
 
   const validation = validateImageFile(file)
   if (!validation.ok) throw new GeminiError(validation.error, 'INVALID_FILE')
@@ -115,42 +122,63 @@ export async function analyseMealPhoto(file) {
   const base64 = await fileToBase64(file)
   const mimeType = file.type
 
-  const prompt = `You are a nutrition expert. Analyse this meal photo carefully.
+  const prompt = `You are a nutrition expert. Carefully analyse this meal photo.
 Return ONLY valid JSON with NO markdown, NO explanation, NO extra text.
 
 Format:
 {
   "items": [
-    { "name": "food name", "portion": "e.g. 1 cup", "kcal": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0 }
+    {
+      "name": "food name",
+      "portion": "e.g. 1 cup",
+      "kcal": 0,
+      "protein_g": 0,
+      "carbs_g": 0,
+      "fat_g": 0
+    }
   ],
   "total_kcal": 0,
   "confidence": 0.0
 }
 
 Rules:
-- confidence is 0.0–1.0 (how confident you are this is food and portions are accurate)
-- If you cannot identify food, return { "items": [], "total_kcal": 0, "confidence": 0 }
+- confidence is 0.0 to 1.0 (how confident you are the food is identified and portions are accurate)
+- If you cannot identify any food, return: {"items":[],"total_kcal":0,"confidence":0}
 - All numbers must be integers or one decimal place
-- Portion should be human-readable (e.g. "1 cup", "2 pieces", "150g")
-- Be conservative with estimates — it is better to under-estimate than over-estimate`
+- portion should be human-readable e.g. "1 cup", "2 pieces", "150g"
+- Be conservative — it is better to under-estimate than over-estimate calories`
 
   const body = {
-    contents: [
+    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    max_tokens: 1024,
+    temperature: 0.1,
+    messages: [
       {
-        parts: [
-          { inline_data: { mime_type: mimeType, data: base64 } },
-          { text: prompt },
+        role: 'user',
+        content: [
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:${mimeType};base64,${base64}`,
+            },
+          },
+          {
+            type: 'text',
+            text: prompt,
+          },
         ],
       },
     ],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
   }
 
   const response = await fetchWithTimeout(
-    `${GEMINI_URL}?key=${API_KEY}`,
+    GROQ_URL,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`,
+      },
       body: JSON.stringify(body),
     }
   )
@@ -158,10 +186,10 @@ Rules:
   if (!response.ok) await handleHttpError(response)
 
   const data = await response.json()
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
+  const text = data?.choices?.[0]?.message?.content
   if (!text) throw new GeminiError('Empty AI response — try again.', 'EMPTY_RESPONSE')
 
-  return parseGeminiJson(text)
+  return parseGroqJson(text)
 }
 
 // ── Text Estimation ──────────────────────────────────────────────────────────
@@ -172,37 +200,66 @@ Rules:
  * @returns {{ kcal: number, protein_g: number, carbs_g: number, fat_g: number, food_name: string }}
  */
 export async function estimateFromText(description) {
-  if (!API_KEY) throw new GeminiError('Gemini API key is not configured.', 'NO_KEY')
-  if (!description?.trim()) throw new GeminiError('Please describe what you ate.', 'EMPTY_INPUT')
+  if (!API_KEY) {
+    throw new GeminiError(
+      'Groq API key is not configured. Add VITE_GROQ_API_KEY to Vercel env vars.',
+      'NO_KEY'
+    )
+  }
+  if (!description?.trim()) {
+    throw new GeminiError('Please describe what you ate.', 'EMPTY_INPUT')
+  }
 
-  const prompt = `You are a nutrition expert. Estimate the nutritional content of this food description.
+  const prompt = `You are a nutrition expert. Estimate the nutritional content of this food.
 
-Food: "${description.trim()}"
+Food description: "${description.trim()}"
 
-Return ONLY valid JSON with NO markdown:
+Return ONLY valid JSON with NO markdown, NO explanation:
 {
-  "food_name": "clean food name",
+  "food_name": "clean display name",
   "kcal": 0,
   "protein_g": 0,
   "carbs_g": 0,
-  "fat_g": 0
+  "fat_g": 0,
+  "items": [
+    {
+      "name": "food_name",
+      "portion": "as described",
+      "kcal": 0,
+      "protein_g": 0,
+      "carbs_g": 0,
+      "fat_g": 0
+    }
+  ],
+  "total_kcal": 0,
+  "confidence": 0.8
 }
 
 Rules:
-- Be conservative — estimate the most common portion if not specified
-- food_name should be a clean, formatted name for display
+- Be conservative with estimates
+- food_name should be clean and formatted for display
 - All numbers must be integers`
 
   const body = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 256 },
+    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    max_tokens: 512,
+    temperature: 0.1,
+    messages: [
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
   }
 
   const response = await fetchWithTimeout(
-    `${GEMINI_URL}?key=${API_KEY}`,
+    GROQ_URL,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`,
+      },
       body: JSON.stringify(body),
     }
   )
@@ -210,8 +267,8 @@ Rules:
   if (!response.ok) await handleHttpError(response)
 
   const data = await response.json()
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
+  const text = data?.choices?.[0]?.message?.content
   if (!text) throw new GeminiError('Empty AI response — try again.', 'EMPTY_RESPONSE')
 
-  return parseGeminiJson(text)
+  return parseGroqJson(text)
 }
