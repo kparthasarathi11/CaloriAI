@@ -5,35 +5,61 @@ import { useMeals } from '../hooks/useMeals'
 import { analyseMealPhoto, estimateFromText, GeminiError, validateImageFile } from '../lib/gemini'
 import AppLayout from '../components/layout/AppLayout'
 import { Alert, Spinner } from '../components/ui'
+import PSKFooter from '../components/ui/PSKFooter'
 import { clsx } from 'clsx'
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack']
 
+// ③ Confidence colour helper
+function ConfidenceBadge({ confidence }) {
+  const pct = Math.round(confidence * 100)
+  const { bg, text, label } =
+    pct >= 80 ? { bg: 'bg-green-100',  text: 'text-green-700',  label: 'High' }
+  : pct >= 60 ? { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Medium' }
+  :             { bg: 'bg-red-100',    text: 'text-red-700',    label: 'Low' }
+
+  return (
+    <div className={clsx('flex items-center gap-2 px-3 py-1.5 rounded-xl', bg)}>
+      <div className="flex-1">
+        <div className="flex justify-between mb-0.5">
+          <span className={clsx('text-xs font-bold', text)}>AI Confidence</span>
+          <span className={clsx('text-xs font-black', text)}>{pct}% · {label}</span>
+        </div>
+        <div className="h-1.5 rounded-full bg-white/60">
+          <div
+            className={clsx('h-1.5 rounded-full transition-all',
+              pct >= 80 ? 'bg-green-500' : pct >= 60 ? 'bg-orange-500' : 'bg-red-500'
+            )}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AIScanPage() {
-  const navigate   = useNavigate()
-  const { user }   = useAuth()
+  const navigate    = useNavigate()
+  const { user }    = useAuth()
   const { addMeal } = useMeals(user?.id)
 
-  const fileRef    = useRef(null)
-  const [tab, setTab]         = useState('photo')       // 'photo' | 'text'
+  const fileRef     = useRef(null)
+  const [tab, setTab]           = useState('photo')
   const [mealType, setMealType] = useState('lunch')
-  const [preview, setPreview] = useState(null)
-  const [file, setFile]       = useState(null)
+  const [preview, setPreview]   = useState(null)
+  const [file, setFile]         = useState(null)
   const [textInput, setTextInput] = useState('')
-  const [result, setResult]   = useState(null)
+  const [result, setResult]     = useState(null)
   const [editedItems, setEditedItems] = useState([])
-  const [status, setStatus]   = useState('idle')        // idle | scanning | done | saving
-  const [error, setError]     = useState(null)
+  const [status, setStatus]     = useState('idle')  // idle | scanning | done | saving
+  const [error, setError]       = useState(null)
 
   // ── File selection ──────────────────────────────────────
   function handleFileChange(e) {
     const f = e.target.files?.[0]
     if (!f) return
     const validation = validateImageFile(f)
-    if (!validation.ok) {
-      setError(validation.error)
-      return
-    }
+    if (!validation.ok) { setError(validation.error); return }
     setFile(f)
     setPreview(URL.createObjectURL(f))
     setError(null)
@@ -52,9 +78,6 @@ export default function AIScanPage() {
         setStatus('idle')
         return
       }
-      if (data.confidence < 0.5) {
-        setError('Low confidence result — please review items carefully before saving.')
-      }
       setResult(data)
       setEditedItems(data.items.map((item, i) => ({ ...item, id: i })))
       setStatus('done')
@@ -72,7 +95,11 @@ export default function AIScanPage() {
     try {
       const data = await estimateFromText(textInput)
       const syntheticResult = {
-        items: [{ name: data.food_name, portion: 'as described', kcal: data.kcal, protein_g: data.protein_g, carbs_g: data.carbs_g, fat_g: data.fat_g, id: 0 }],
+        items: [{
+          name: data.food_name, portion: 'as described',
+          kcal: data.kcal, protein_g: data.protein_g,
+          carbs_g: data.carbs_g, fat_g: data.fat_g, id: 0,
+        }],
         total_kcal: data.kcal,
         confidence: 0.8,
       }
@@ -85,7 +112,7 @@ export default function AIScanPage() {
     }
   }
 
-  // ── Edit item ───────────────────────────────────────────
+  // ── Edit / remove item ──────────────────────────────────
   function updateItem(id, field, value) {
     setEditedItems(items => items.map(item =>
       item.id === id ? { ...item, [field]: field === 'name' ? value : Number(value) } : item
@@ -95,21 +122,42 @@ export default function AIScanPage() {
     setEditedItems(items => items.filter(item => item.id !== id))
   }
 
-  // ── Save ────────────────────────────────────────────────
+  // ── Save — ④ all items saved as ONE meal log entry (combined) ─────────────
   async function handleSave() {
     if (!editedItems.length) return
     setStatus('saving')
     setError(null)
     try {
-      for (const item of editedItems) {
+      if (editedItems.length === 1) {
+        // Single item — save directly
+        const item = editedItems[0]
         await addMeal({
-          food_name: item.name,
-          meal_type: mealType,
-          kcal: item.kcal,
-          protein_g: item.protein_g ?? 0,
-          carbs_g: item.carbs_g ?? 0,
-          fat_g: item.fat_g ?? 0,
-          source: tab === 'photo' ? 'ai_scan' : 'ai_text',
+          food_name:     item.name,
+          meal_type:     mealType,
+          kcal:          item.kcal,
+          protein_g:     item.protein_g ?? 0,
+          carbs_g:       item.carbs_g ?? 0,
+          fat_g:         item.fat_g ?? 0,
+          source:        tab === 'photo' ? 'ai_scan' : 'ai_text',
+          ai_confidence: result?.confidence ?? null,
+        })
+      } else {
+        // ④ Multiple items from ONE scan → combine into a single log entry
+        // so history shows "1 meal logged" not "5 meals logged"
+        const totalKcal    = editedItems.reduce((s, i) => s + (Number(i.kcal)      || 0), 0)
+        const totalProtein = editedItems.reduce((s, i) => s + (Number(i.protein_g) || 0), 0)
+        const totalCarbs   = editedItems.reduce((s, i) => s + (Number(i.carbs_g)   || 0), 0)
+        const totalFat     = editedItems.reduce((s, i) => s + (Number(i.fat_g)     || 0), 0)
+        const combinedName = editedItems.map(i => i.name).join(', ')
+
+        await addMeal({
+          food_name:     combinedName,
+          meal_type:     mealType,
+          kcal:          totalKcal,
+          protein_g:     totalProtein,
+          carbs_g:       totalCarbs,
+          fat_g:         totalFat,
+          source:        'ai_scan',
           ai_confidence: result?.confidence ?? null,
         })
       }
@@ -154,14 +202,20 @@ export default function AIScanPage() {
           </div>
         </div>
 
-        {/* Powered by badge */}
+        {/* ③ Powered by Groq (not Gemini) */}
         <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
-          <span className="text-blue-500">✨</span>
-          <p className="text-xs text-blue-700 font-medium">Powered by Gemini 1.5 Flash Vision API</p>
+          <span className="text-blue-500">⚡</span>
+          <p className="text-xs text-blue-700 font-medium">
+            Powered by <span className="font-bold">Groq · Llama 4 Scout Vision</span>
+          </p>
         </div>
 
-        {/* Error */}
-        {error && <Alert type={error.includes('Low confidence') ? 'warning' : 'error'}>{error}</Alert>}
+        {/* Error / low-confidence warning */}
+        {error && (
+          <Alert type={error.includes('Low confidence') ? 'warning' : 'error'}>
+            {error}
+          </Alert>
+        )}
 
         {/* ── PHOTO TAB ── */}
         {tab === 'photo' && status !== 'done' && (
@@ -171,7 +225,8 @@ export default function AIScanPage() {
               className="border-2 border-dashed border-blue-200 rounded-2xl p-6 text-center bg-blue-50/40 cursor-pointer hover:bg-blue-50 transition"
             >
               {preview ? (
-                <img src={preview} alt="Meal preview" className="w-full max-h-48 object-contain rounded-xl mx-auto mb-2" />
+                <img src={preview} alt="Meal preview"
+                  className="w-full max-h-48 object-contain rounded-xl mx-auto mb-2" />
               ) : (
                 <>
                   <div className="text-4xl mb-3">📸</div>
@@ -184,22 +239,23 @@ export default function AIScanPage() {
               className="hidden" onChange={handleFileChange} />
 
             <div className="flex gap-2">
-              <button onClick={() => fileRef.current?.click()} className="btn-secondary flex-1">🖼️ Gallery</button>
-              <button onClick={() => { fileRef.current.capture = 'environment'; fileRef.current?.click() }}
-                className="btn-secondary flex-1">📷 Camera</button>
+              <button onClick={() => fileRef.current?.click()} className="btn-secondary flex-1">
+                🖼️ Gallery
+              </button>
+              <button
+                onClick={() => { fileRef.current.capture = 'environment'; fileRef.current?.click() }}
+                className="btn-secondary flex-1">
+                📷 Camera
+              </button>
             </div>
 
-            <button
-              onClick={handlePhotoScan}
-              disabled={!file || status === 'scanning'}
-              className="btn-primary"
-            >
+            <button onClick={handlePhotoScan} disabled={!file || status === 'scanning'} className="btn-primary">
               {status === 'scanning'
                 ? <span className="flex items-center justify-center gap-2"><Spinner size="sm" /> Analysing…</span>
                 : 'Analyse with AI →'
               }
             </button>
-            <p className="text-center text-xs text-slate-400">⚡ Results in ~2 seconds</p>
+            <p className="text-center text-xs text-slate-400">⚡ Powered by Groq — ultra fast</p>
           </>
         )}
 
@@ -207,7 +263,9 @@ export default function AIScanPage() {
         {tab === 'text' && status !== 'done' && (
           <>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-2">Describe what you ate</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-2">
+                Describe what you ate
+              </label>
               <textarea
                 className="input resize-none"
                 rows={3}
@@ -233,12 +291,31 @@ export default function AIScanPage() {
         {status === 'done' && editedItems.length > 0 && (
           <div>
             <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-100 rounded-2xl p-4 mb-4">
+
+              {/* ③ Highlighted confidence score */}
+              {result?.confidence !== undefined && (
+                <div className="mb-3">
+                  <ConfidenceBadge confidence={result.confidence} />
+                  {result.confidence < 0.6 && (
+                    <p className="text-xs text-orange-600 mt-1.5 font-medium">
+                      ⚠️ Low confidence — please review and edit items before saving.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-center gap-2 mb-3">
-                <span className="tag tag-blue">✨ AI Detected</span>
-                {result?.confidence && (
-                  <span className="text-xs text-slate-400">{Math.round(result.confidence * 100)}% confidence</span>
-                )}
+                <span className="tag tag-blue">✨ AI Detected · {editedItems.length} item{editedItems.length > 1 ? 's' : ''}</span>
               </div>
+
+              {/* ④ Note when multiple items will be combined */}
+              {editedItems.length > 1 && (
+                <div className="bg-blue-100/60 rounded-xl px-3 py-2 mb-3">
+                  <p className="text-xs text-blue-700 font-medium">
+                    ℹ️ These {editedItems.length} items will be saved as <strong>1 meal entry</strong> in your log.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 {editedItems.map(item => (
@@ -261,7 +338,8 @@ export default function AIScanPage() {
                       />
                       <p className="text-[10px] text-slate-400">kcal</p>
                     </div>
-                    <button onClick={() => removeItem(item.id)} className="text-slate-300 hover:text-red-400 transition ml-1">✕</button>
+                    <button onClick={() => removeItem(item.id)}
+                      className="text-slate-300 hover:text-red-400 transition ml-1">✕</button>
                   </div>
                 ))}
               </div>
@@ -275,7 +353,7 @@ export default function AIScanPage() {
             <button onClick={handleSave} disabled={status === 'saving'} className="btn-primary mb-2">
               {status === 'saving'
                 ? <span className="flex items-center justify-center gap-2"><Spinner size="sm" /> Saving…</span>
-                : '✓ Confirm & Add to Log'
+                : `✓ Confirm & Add to Log`
               }
             </button>
             <button onClick={() => { setStatus('idle'); setResult(null); setError(null) }}
@@ -289,9 +367,13 @@ export default function AIScanPage() {
         {status === 'done' && editedItems.length === 0 && (
           <Alert type="warning">
             All items removed. Add at least one item or{' '}
-            <button onClick={() => { setStatus('idle'); setResult(null) }} className="underline font-semibold">try again</button>.
+            <button onClick={() => { setStatus('idle'); setResult(null) }}
+              className="underline font-semibold">try again</button>.
           </Alert>
         )}
+
+        {/* ⑤ PSK Footer */}
+        <PSKFooter />
       </div>
     </AppLayout>
   )
