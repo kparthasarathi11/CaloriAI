@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
@@ -7,17 +7,17 @@ import { Alert, Spinner } from '../components/ui'
 import { clsx } from 'clsx'
 
 const GOAL_OPTIONS = [
-  { value: 'lose_weight',    label: 'Lose weight',     emoji: '🔥', desc: '-0.5 kg/week deficit' },
-  { value: 'maintain',       label: 'Maintain weight', emoji: '⚖️', desc: 'Balanced TDEE' },
-  { value: 'gain_muscle',    label: 'Build muscle',    emoji: '💪', desc: '+300 kcal surplus' },
-  { value: 'improve_fitness',label: 'Improve fitness', emoji: '🏃', desc: 'Maintenance calories' },
+  { value: 'lose_weight',     label: 'Lose weight',     emoji: '🔥', desc: '-0.5 kg/week deficit' },
+  { value: 'maintain',        label: 'Maintain weight', emoji: '⚖️', desc: 'Balanced TDEE' },
+  { value: 'gain_muscle',     label: 'Build muscle',    emoji: '💪', desc: '+300 kcal surplus' },
+  { value: 'improve_fitness', label: 'Improve fitness', emoji: '🏃', desc: 'Maintenance calories' },
 ]
 
 const ACTIVITY_OPTIONS = [
-  { value: 'sedentary',         label: 'Sedentary',          desc: 'Desk job, little exercise' },
-  { value: 'lightly_active',    label: 'Lightly active',     desc: '1-3 days/week exercise' },
-  { value: 'moderately_active', label: 'Moderately active',  desc: '3-5 days/week exercise' },
-  { value: 'very_active',       label: 'Very active',        desc: '6-7 days/week hard exercise' },
+  { value: 'sedentary',          label: 'Sedentary',         desc: 'Desk job, little exercise' },
+  { value: 'lightly_active',     label: 'Lightly active',    desc: '1-3 days/week exercise' },
+  { value: 'moderately_active',  label: 'Moderately active', desc: '3-5 days/week exercise' },
+  { value: 'very_active',        label: 'Very active',       desc: '6-7 days/week hard exercise' },
 ]
 
 function StepDots({ current, total }) {
@@ -35,61 +35,89 @@ function StepDots({ current, total }) {
 
 export default function OnboardingPage() {
   const navigate = useNavigate()
-  const { user, refreshProfile } = useAuth()
-  const [step, setStep]           = useState(0)
-  const [goal, setGoal]           = useState('')
-  const [stats, setStats]         = useState({ age: '', weight_kg: '', height_cm: '', activity_level: '' })
-  const [target, setTarget]       = useState(null)
-  const [macros, setMacros]       = useState(null)
-  const [error, setError]         = useState(null)
-  const [loading, setLoading]     = useState(false)
+  const { user, profile, refreshProfile } = useAuth()
 
-  // ── Step 1: Calculate target ─────────────────────────────
+  // ② Detect if profile already has body stats filled in
+  const hasExistingStats = !!(
+    profile?.age &&
+    profile?.weight_kg &&
+    profile?.height_cm &&
+    profile?.activity_level
+  )
+
+  const [step, setStep]       = useState(0)
+  const [goal, setGoal]       = useState(profile?.goal_type ?? '')
+  const [stats, setStats]     = useState({
+    age:            profile?.age ?? '',
+    weight_kg:      profile?.weight_kg ?? '',
+    height_cm:      profile?.height_cm ?? '',
+    activity_level: profile?.activity_level ?? '',
+  })
+  const [target, setTarget]   = useState(null)
+  const [macros, setMacros]   = useState(null)
+  const [error, setError]     = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  // ② If stats already exist, skip straight to step 2 (show target) after goal is picked
+  function handleGoalNext() {
+    if (!goal) return
+    if (hasExistingStats) {
+      // Pre-calculate with existing stats — skip the body stats form
+      const cal = calculateCalorieTarget({
+        weight_kg:      Number(stats.weight_kg),
+        height_cm:      Number(stats.height_cm),
+        age:            Number(stats.age),
+        activity_level: stats.activity_level,
+        goal_type:      goal,
+      })
+      setTarget(cal)
+      setMacros(calculateMacros(cal))
+      setStep(2) // jump straight to target screen
+    } else {
+      setStep(1) // go to body stats form
+    }
+  }
+
   function handleStatsNext(e) {
     e.preventDefault()
     setError(null)
     const { age, weight_kg, height_cm, activity_level } = stats
-    // Validate ranges (EC-07)
-    if (age < 13 || age > 100)        return setError('Please enter a valid age (13–100).')
+    if (age < 13 || age > 100)           return setError('Please enter a valid age (13–100).')
     if (weight_kg < 20 || weight_kg > 300) return setError('Please enter a valid weight (20–300 kg).')
     if (height_cm < 100 || height_cm > 250) return setError('Please enter a valid height (100–250 cm).')
-    if (!activity_level)              return setError('Please select your activity level.')
+    if (!activity_level)                 return setError('Please select your activity level.')
 
     const cal = calculateCalorieTarget({
-      weight_kg: Number(weight_kg),
-      height_cm: Number(height_cm),
-      age: Number(age),
+      weight_kg:      Number(weight_kg),
+      height_cm:      Number(height_cm),
+      age:            Number(age),
       activity_level,
-      goal_type: goal,
+      goal_type:      goal,
     })
-    const mac = calculateMacros(cal)
     setTarget(cal)
-    setMacros(mac)
+    setMacros(calculateMacros(cal))
     setStep(2)
   }
 
-  // ── Step 2: Save to DB ───────────────────────────────────
   async function handleFinish() {
     setError(null)
     setLoading(true)
     try {
-      // Update user profile
       const { error: userErr } = await supabase.from('users').upsert({
-        id: user.id,
-        name: user.user_metadata?.full_name || user.email?.split('@')[0],
-        age: Number(stats.age),
-        weight_kg: Number(stats.weight_kg),
-        height_cm: Number(stats.height_cm),
-        activity_level: stats.activity_level,
-        goal_type: goal,
+        id:                user.id,
+        name:              profile?.name ?? user.user_metadata?.full_name ?? user.email?.split('@')[0],
+        age:               Number(stats.age),
+        weight_kg:         Number(stats.weight_kg),
+        height_cm:         Number(stats.height_cm),
+        activity_level:    stats.activity_level,
+        goal_type:         goal,
         onboarding_complete: true,
-        updated_at: new Date().toISOString(),
+        updated_at:        new Date().toISOString(),
       })
       if (userErr) throw userErr
 
-      // Upsert goal
       const { error: goalErr } = await supabase.from('goals').upsert({
-        user_id: user.id,
+        user_id:    user.id,
         calorie_target: target,
         ...macros,
         updated_at: new Date().toISOString(),
@@ -105,16 +133,31 @@ export default function OnboardingPage() {
     }
   }
 
+  // Total steps: if stats exist we only show 2 dots (goal + target), else 3
+  const totalSteps = hasExistingStats ? 2 : 3
+  const dotIndex   = step === 2 ? totalSteps - 1 : step
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col max-w-md mx-auto p-6">
       <div className="flex-1 flex flex-col justify-center">
 
-        {/* Step 0: Goal selection */}
+        {/* ── STEP 0: Goal selection ── */}
         {step === 0 && (
           <div>
-            <StepDots current={0} total={3} />
+            <StepDots current={0} total={totalSteps} />
             <h2 className="text-2xl font-black text-slate-800 mb-1">What's your goal?</h2>
             <p className="text-sm text-slate-500 mb-6">We'll personalise your daily calorie target.</p>
+
+            {/* ② If stats exist, show a notice so user knows we'll reuse them */}
+            {hasExistingStats && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 mb-4 flex items-start gap-2">
+                <span>ℹ️</span>
+                <p className="text-xs text-blue-700">
+                  Your stats (age, weight, height) are already saved — we'll use them to calculate your new target.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-3">
               {GOAL_OPTIONS.map(opt => (
                 <button key={opt.value} onClick={() => setGoal(opt.value)}
@@ -133,16 +176,16 @@ export default function OnboardingPage() {
                 </button>
               ))}
             </div>
-            <button disabled={!goal} onClick={() => setStep(1)} className="btn-primary mt-6">
+            <button disabled={!goal} onClick={handleGoalNext} className="btn-primary mt-6">
               Continue →
             </button>
           </div>
         )}
 
-        {/* Step 1: Body stats */}
+        {/* ── STEP 1: Body stats (only shown if no existing stats) ── */}
         {step === 1 && (
           <form onSubmit={handleStatsNext}>
-            <StepDots current={1} total={3} />
+            <StepDots current={1} total={totalSteps} />
             <h2 className="text-2xl font-black text-slate-800 mb-1">Tell us about you</h2>
             <p className="text-sm text-slate-500 mb-6">Used to calculate your calorie target accurately.</p>
             {error && <Alert type="error" className="mb-4">{error}</Alert>}
@@ -190,12 +233,12 @@ export default function OnboardingPage() {
           </form>
         )}
 
-        {/* Step 2: Show target */}
+        {/* ── STEP 2: Calculated target ── */}
         {step === 2 && (
           <div>
-            <StepDots current={2} total={3} />
+            <StepDots current={dotIndex} total={totalSteps} />
             <h2 className="text-2xl font-black text-slate-800 mb-1">Your daily target</h2>
-            <p className="text-sm text-slate-500 mb-6">Based on your stats & goal. You can adjust this anytime.</p>
+            <p className="text-sm text-slate-500 mb-6">Based on your stats & goal. You can adjust anytime.</p>
 
             {error && <Alert type="error" className="mb-4">{error}</Alert>}
 
@@ -222,7 +265,7 @@ export default function OnboardingPage() {
             </div>
 
             <div className="flex gap-3">
-              <button onClick={() => setStep(1)} className="btn-secondary flex-none w-24">← Back</button>
+              <button onClick={() => setStep(hasExistingStats ? 0 : 1)} className="btn-secondary flex-none w-24">← Back</button>
               <button onClick={handleFinish} disabled={loading} className="btn-primary flex-1">
                 {loading ? <Spinner size="sm" className="mx-auto" /> : "🚀 Let's start!"}
               </button>
