@@ -62,11 +62,6 @@ npm install
 
 Supabase Dashboard → **Authentication → Settings** → disable "Enable email confirmations"
 
-### 5. Get Gemini API Key
-
-1. Go to [aistudio.google.com](https://aistudio.google.com/app/apikey)
-2. Create a free API key
-3. Free tier: **1,500 requests/day** · **15 RPM**
 
 ### 6. Environment Variables
 
@@ -82,13 +77,7 @@ VITE_GEMINI_API_KEY=your_gemini_key
 VITE_APP_URL=http://localhost:5173   # change to Vercel URL after deploy
 ```
 
-### 7. Run Locally
 
-```bash
-npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173)
 
 ---
 
