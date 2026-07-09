@@ -13,6 +13,10 @@ import HistoryPage from './pages/HistoryPage'
 import ProfilePage from './pages/ProfilePage'
 import AuthCallbackPage from './pages/AuthCallbackPage'
 
+// Admin (eval console)
+import AdminDashboardPage from './pages/admin/AdminDashboardPage'
+import GoldenDatasetPage from './pages/admin/GoldenDatasetPage'
+import EvalRunsPage from './pages/admin/EvalRunsPage'
 function AppRoutes() {
   const { loading, isAuthenticated, needsOnboarding } = useAuth()
 
@@ -50,6 +54,11 @@ function AppRoutes() {
       <Route path="/goals"   element={isAuthenticated ? <GoalsPage />    : <Navigate to="/login" replace />} />
       <Route path="/history" element={isAuthenticated ? <HistoryPage />  : <Navigate to="/login" replace />} />
       <Route path="/profile" element={isAuthenticated ? <ProfilePage />  : <Navigate to="/login" replace />} />
+      
+      {/* Admin eval console — AdminLayout itself enforces is_admin */}
+      <Route path="/admin"         element={isAuthenticated ? <AdminDashboardPage /> : <Navigate to="/login" replace />} />
+      <Route path="/admin/dataset" element={isAuthenticated ? <GoldenDatasetPage />  : <Navigate to="/login" replace />} />
+      <Route path="/admin/runs"    element={isAuthenticated ? <EvalRunsPage />       : <Navigate to="/login" replace />} />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
