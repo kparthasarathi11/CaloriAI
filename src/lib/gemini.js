@@ -1,6 +1,6 @@
 /**
  * CalorAI — Groq Vision API client
- * Replaces Gemini — uses Groq free tier (llama-4-scout vision model)
+ * Uses Groq free tier (llama-4-maverick vision model)
  * Free tier: generous daily limits, no credit card needed
  * Sign up: https://console.groq.com
  */
@@ -9,6 +9,16 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const API_KEY = import.meta.env.VITE_GROQ_API_KEY
 const TIMEOUT_MS = 15_000
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+
+// ── Custom Error ─────────────────────────────────────────────────────────────
+
+export class GroqError extends Error {
+  constructor(message, code = 'UNKNOWN') {
+    super(message)
+    this.name = 'GroqError'
+    this.code = code
+  }
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -43,9 +53,9 @@ async function fetchWithTimeout(url, options, timeoutMs = TIMEOUT_MS) {
     return res
   } catch (err) {
     if (err.name === 'AbortError') {
-      throw new GeminiError('Request timed out — please try again.', 'TIMEOUT')
+      throw new GroqError('Request timed out — please try again.', 'TIMEOUT')
     }
-    throw new GeminiError('No internet connection — check your network.', 'NETWORK')
+    throw new GroqError('No internet connection — check your network.', 'NETWORK')
   } finally {
     clearTimeout(timer)
   }
@@ -65,7 +75,7 @@ function parseGroqJson(text) {
     }
     return data
   } catch {
-    throw new GeminiError(
+    throw new GroqError(
       'Unexpected AI response — please try logging manually.',
       'PARSE_ERROR'
     )
@@ -85,39 +95,29 @@ async function handleHttpError(response) {
     500: 'Groq service error — use manual entry.',
     503: 'Groq service unavailable — use manual entry.',
   }
-  throw new GeminiError(
+  throw new GroqError(
     map[response.status] || `AI error (${response.status}) — use manual entry.`,
     String(response.status)
   )
 }
 
-// ── Custom Error ─────────────────────────────────────────────────────────────
-
-export class GeminiError extends Error {
-  constructor(message, code = 'UNKNOWN') {
-    super(message)
-    this.name = 'GeminiError'
-    this.code = code
-  }
-}
-
 // ── Image Scan ───────────────────────────────────────────────────────────────
 
 /**
- * Analyse a meal photo with Groq Vision (llama-4-scout).
+ * Analyse a meal photo with Groq Vision (llama-4-maverick).
  * @param {File} file - Image file from input or camera
  * @returns {{ items: Array, total_kcal: number, confidence: number }}
  */
 export async function analyseMealPhoto(file) {
   if (!API_KEY) {
-    throw new GeminiError(
+    throw new GroqError(
       'Groq API key is not configured. Add VITE_GROQ_API_KEY to Vercel env vars.',
       'NO_KEY'
     )
   }
 
   const validation = validateImageFile(file)
-  if (!validation.ok) throw new GeminiError(validation.error, 'INVALID_FILE')
+  if (!validation.ok) throw new GroqError(validation.error, 'INVALID_FILE')
 
   const base64 = await fileToBase64(file)
   const mimeType = file.type
@@ -187,7 +187,7 @@ Rules:
 
   const data = await response.json()
   const text = data?.choices?.[0]?.message?.content
-  if (!text) throw new GeminiError('Empty AI response — try again.', 'EMPTY_RESPONSE')
+  if (!text) throw new GroqError('Empty AI response — try again.', 'EMPTY_RESPONSE')
 
   return parseGroqJson(text)
 }
@@ -201,13 +201,13 @@ Rules:
  */
 export async function estimateFromText(description) {
   if (!API_KEY) {
-    throw new GeminiError(
+    throw new GroqError(
       'Groq API key is not configured. Add VITE_GROQ_API_KEY to Vercel env vars.',
       'NO_KEY'
     )
   }
   if (!description?.trim()) {
-    throw new GeminiError('Please describe what you ate.', 'EMPTY_INPUT')
+    throw new GroqError('Please describe what you ate.', 'EMPTY_INPUT')
   }
 
   const prompt = `You are a nutrition expert. Estimate the nutritional content of this food.
@@ -268,7 +268,7 @@ Rules:
 
   const data = await response.json()
   const text = data?.choices?.[0]?.message?.content
-  if (!text) throw new GeminiError('Empty AI response — try again.', 'EMPTY_RESPONSE')
+  if (!text) throw new GroqError('Empty AI response — try again.', 'EMPTY_RESPONSE')
 
   return parseGroqJson(text)
 }
