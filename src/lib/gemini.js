@@ -1,6 +1,6 @@
 /**
  * CalorAI — Groq Vision API client
- * Uses Groq free tier (llama-4-maverick vision model)
+ * Uses Groq free tier (qwen3.6-27b vision model)
  * Free tier: generous daily limits, no credit card needed
  * Sign up: https://console.groq.com
  */
@@ -104,7 +104,7 @@ async function handleHttpError(response) {
 // ── Image Scan ───────────────────────────────────────────────────────────────
 
 /**
- * Analyse a meal photo with Groq Vision (llama-4-maverick).
+ * Analyse a meal photo with Groq Vision (qwen3.6-27b).
  * @param {File} file - Image file from input or camera
  * @returns {{ items: Array, total_kcal: number, confidence: number }}
  */
@@ -149,7 +149,7 @@ Rules:
 - Be conservative — it is better to under-estimate than over-estimate calories`
 
   const body = {
-    model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
+    model: 'qwen/qwen3.6-27b',
     max_tokens: 1024,
     temperature: 0.1,
     messages: [
@@ -241,7 +241,7 @@ Rules:
 - All numbers must be integers`
 
   const body = {
-    model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
+    model: 'qwen/qwen3.6-27b',
     max_tokens: 512,
     temperature: 0.1,
     messages: [
