@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useMeals } from '../hooks/useMeals'
-import { analyseMealPhoto, estimateFromText, GeminiError, validateImageFile } from '../lib/gemini'
+import { analyseMealPhoto, estimateFromText, GroqError, validateImageFile } from '../lib/gemini'
 import AppLayout from '../components/layout/AppLayout'
 import { Alert, Spinner } from '../components/ui'
 import PSKFooter from '../components/ui/PSKFooter'
@@ -82,7 +82,7 @@ export default function AIScanPage() {
       setEditedItems(data.items.map((item, i) => ({ ...item, id: i })))
       setStatus('done')
     } catch (err) {
-      setError(err instanceof GeminiError ? err.message : 'Unexpected error — please try again.')
+      setError(err instanceof GroqError ? err.message : 'Unexpected error — please try again.')
       setStatus('idle')
     }
   }
@@ -107,7 +107,7 @@ export default function AIScanPage() {
       setEditedItems(syntheticResult.items)
       setStatus('done')
     } catch (err) {
-      setError(err instanceof GeminiError ? err.message : 'Unexpected error — please try again.')
+      setError(err instanceof GroqError ? err.message : 'Unexpected error — please try again.')
       setStatus('idle')
     }
   }
@@ -206,7 +206,7 @@ export default function AIScanPage() {
         <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
           <span className="text-blue-500">⚡</span>
           <p className="text-xs text-blue-700 font-medium">
-            Powered by <span className="font-bold">Groq · Llama 4 Scout Vision</span>
+            Powered by <span className="font-bold">Groq · Llama 4 Maverick Vision</span>
           </p>
         </div>
 
