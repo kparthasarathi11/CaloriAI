@@ -63,23 +63,34 @@ async function fetchWithTimeout(url, options, timeoutMs = TIMEOUT_MS) {
 
 /** Parse and validate Groq response JSON */
 function parseGroqJson(text) {
-  // Strip markdown code fences if present
-  const clean = text
+  // 1. Strip <think>...</think> blocks (Qwen reasoning models)
+  let clean = text.replace(/<think>[\s\S]*?<\/think>/gi, '')
+
+  // 2. Strip markdown code fences
+  clean = clean
     .replace(/```json\s*/gi, '')
     .replace(/```\s*/g, '')
     .trim()
+
+  // 3. Try direct parse first
   try {
     const data = JSON.parse(clean)
-    if (typeof data !== 'object' || !Array.isArray(data.items)) {
-      throw new Error('Unexpected shape')
-    }
-    return data
-  } catch {
-    throw new GroqError(
-      'Unexpected AI response — please try logging manually.',
-      'PARSE_ERROR'
-    )
+    if (typeof data === 'object' && Array.isArray(data.items)) return data
+  } catch { /* fall through to extraction */ }
+
+  // 4. Extract the first JSON object from the text (handles preamble/postamble)
+  const match = clean.match(/\{[\s\S]*\}/)
+  if (match) {
+    try {
+      const data = JSON.parse(match[0])
+      if (typeof data === 'object' && Array.isArray(data.items)) return data
+    } catch { /* fall through */ }
   }
+
+  throw new GroqError(
+    'Unexpected AI response — please try logging manually.',
+    'PARSE_ERROR'
+  )
 }
 
 /** Handle HTTP error codes from Groq */
@@ -152,6 +163,7 @@ Rules:
     model: 'qwen/qwen3.6-27b',
     max_tokens: 1024,
     temperature: 0.1,
+    response_format: { type: 'json_object' },
     messages: [
       {
         role: 'user',
@@ -244,6 +256,7 @@ Rules:
     model: 'qwen/qwen3.6-27b',
     max_tokens: 512,
     temperature: 0.1,
+    response_format: { type: 'json_object' },
     messages: [
       {
         role: 'user',
