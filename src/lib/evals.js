@@ -15,7 +15,7 @@ import { estimateFromText, GroqError } from './gemini'
 
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions'
 const API_KEY    = import.meta.env.VITE_GROQ_API_KEY
-const MODEL      = 'meta-llama/llama-4-maverick-17b-128e-instruct'
+const MODEL      = 'qwen/qwen3.6-27b'
 const CASE_DELAY_MS = 1200 // gap between cases to stay under rate limits
 
 // ── Image case runner (image URL → Groq vision) ────────────────────────────
