@@ -63,22 +63,39 @@ async function fetchWithTimeout(url, options, timeoutMs = TIMEOUT_MS) {
 
 /** Parse and validate Groq response JSON */
 function parseGroqJson(text) {
-  // 1. Strip <think>...</think> blocks (Qwen reasoning models)
+  // 1. Strip <think>...</think> blocks (Qwen reasoning chain)
   let clean = text.replace(/<think>[\s\S]*?<\/think>/gi, '')
 
-  // 2. Strip markdown code fences
+  // 2. If <think> opened but never closed (truncated), discard everything before the last }
+  //    by finding the last JSON object boundary working backwards
+  if (/<think>/i.test(clean)) {
+    // Still has an unclosed think tag — find JSON by scanning for the outermost { }
+    const lastBrace = text.lastIndexOf('}')
+    const depth = []
+    let start = -1
+    for (let i = lastBrace; i >= 0; i--) {
+      if (text[i] === '}') depth.push(i)
+      if (text[i] === '{') {
+        depth.pop()
+        if (depth.length === 0) { start = i; break }
+      }
+    }
+    clean = start >= 0 ? text.slice(start, lastBrace + 1) : ''
+  }
+
+  // 3. Strip markdown code fences
   clean = clean
     .replace(/```json\s*/gi, '')
     .replace(/```\s*/g, '')
     .trim()
 
-  // 3. Try direct parse first
+  // 4. Try direct parse
   try {
     const data = JSON.parse(clean)
     if (typeof data === 'object' && Array.isArray(data.items)) return data
-  } catch { /* fall through to extraction */ }
+  } catch { /* fall through */ }
 
-  // 4. Extract the first JSON object from the text (handles preamble/postamble)
+  // 5. Extract outermost JSON object as last resort
   const match = clean.match(/\{[\s\S]*\}/)
   if (match) {
     try {
@@ -133,8 +150,8 @@ export async function analyseMealPhoto(file) {
   const base64 = await fileToBase64(file)
   const mimeType = file.type
 
-  const prompt = `You are a nutrition expert. Carefully analyse this meal photo.
-Return ONLY valid JSON with NO markdown, NO explanation, NO extra text.
+  const prompt = `/no_think
+You are a nutrition expert. Analyse this meal photo and return ONLY valid JSON — no markdown, no explanation, no extra text.
 
 Format:
 {
@@ -153,15 +170,15 @@ Format:
 }
 
 Rules:
-- confidence is 0.0 to 1.0 (how confident you are the food is identified and portions are accurate)
+- confidence is 0.0 to 1.0 (how certain you are about food identification and portions)
 - If you cannot identify any food, return: {"items":[],"total_kcal":0,"confidence":0}
 - All numbers must be integers or one decimal place
 - portion should be human-readable e.g. "1 cup", "2 pieces", "150g"
-- Be conservative — it is better to under-estimate than over-estimate calories`
+- Be conservative — better to under-estimate than over-estimate calories`
 
   const body = {
     model: 'qwen/qwen3.6-27b',
-    max_tokens: 1024,
+    max_tokens: 2048,
     temperature: 0.1,
     messages: [
       {
