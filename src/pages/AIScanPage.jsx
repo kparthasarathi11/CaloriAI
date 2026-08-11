@@ -206,7 +206,7 @@ export default function AIScanPage() {
         <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
           <span className="text-blue-500">⚡</span>
           <p className="text-xs text-blue-700 font-medium">
-            Powered by <span className="font-bold">Groq · Llama 4 Maverick Vision</span>
+            Powered by <span className="font-bold">Groq · Qwen 3.6 Vision</span>
           </p>
         </div>
 
