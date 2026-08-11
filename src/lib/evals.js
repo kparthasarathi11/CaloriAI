@@ -11,11 +11,11 @@
  * - Sequential execution with a small delay respects Groq free-tier rate limits.
  */
 import { supabase } from './supabase'
-import { estimateFromText, GeminiError } from './gemini'
+import { estimateFromText, GroqError } from './gemini'
 
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions'
 const API_KEY    = import.meta.env.VITE_GROQ_API_KEY
-const MODEL      = 'meta-llama/llama-4-scout-17b-16e-instruct'
+const MODEL      = 'meta-llama/llama-4-maverick-17b-128e-instruct'
 const CASE_DELAY_MS = 1200 // gap between cases to stay under rate limits
 
 // ── Image case runner (image URL → Groq vision) ────────────────────────────
@@ -42,10 +42,10 @@ Be conservative with estimates.`
       }],
     }),
   })
-  if (!res.ok) throw new GeminiError(`API ${res.status}`, String(res.status))
+  if (!res.ok) throw new GroqError(`API ${res.status}`, String(res.status))
   const data = await res.json()
   const text = data?.choices?.[0]?.message?.content
-  if (!text) throw new GeminiError('Empty response', 'EMPTY_RESPONSE')
+  if (!text) throw new GroqError('Empty response', 'EMPTY_RESPONSE')
   const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
   return JSON.parse(clean)
 }
