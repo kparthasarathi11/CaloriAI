@@ -217,7 +217,6 @@ Rules:
   const text = data?.choices?.[0]?.message?.content
   if (!text) throw new GroqError('Empty AI response — try again.', 'EMPTY_RESPONSE')
 
-  console.log('[CalorAI] Raw Groq vision response:', text)
   return parseGroqJson(text)
 }
 
@@ -271,13 +270,12 @@ Rules:
 
   const body = {
     model: 'qwen/qwen3.6-27b',
-    max_tokens: 512,
+    max_tokens: 1024,
     temperature: 0.1,
-    response_format: { type: 'json_object' },
     messages: [
       {
         role: 'user',
-        content: prompt,
+        content: `/no_think\n${prompt}`,
       },
     ],
   }
