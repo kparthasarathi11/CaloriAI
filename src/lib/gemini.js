@@ -149,7 +149,7 @@ Rules:
 - Be conservative — it is better to under-estimate than over-estimate calories`
 
   const body = {
-    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
     max_tokens: 1024,
     temperature: 0.1,
     messages: [
@@ -241,7 +241,7 @@ Rules:
 - All numbers must be integers`
 
   const body = {
-    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
     max_tokens: 512,
     temperature: 0.1,
     messages: [
